@@ -4,7 +4,7 @@
 Summary:        Utilities from the general purpose cryptography library with TLS implementation
 Name:           openssl
 Version:        1.1.1k
-Release:        27%{?dist}
+Release:        28%{?dist}
 License:        OpenSSL
 Vendor:         Microsoft Corporation
 Distribution:   Mariner
@@ -357,6 +357,9 @@ rm -f %{buildroot}%{_sysconfdir}/pki/tls/ct_log_list.cnf.dist
 %postun libs -p /sbin/ldconfig
 
 %changelog
+* Sat Aug 25 2023 Thien Trung Vuong <tvuong@microsoft.com> - 1.1.1k-28
+- Bump release number for fun
+
 * Sat Aug 25 2023 Thien Trung Vuong <tvuong@microsoft.com> - 1.1.1k-27
 - Bump release number for fun
 
