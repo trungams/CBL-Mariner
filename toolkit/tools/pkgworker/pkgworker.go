@@ -27,7 +27,6 @@ import (
 )
 
 const (
-	chrootRpmBuildRoot      = "/usr/src/mariner"
 	chrootLocalRpmsDir      = "/localrpms"
 	chrootLocalToolchainDir = "/toolchainrpms"
 	chrootLocalRpmsCacheDir = "/upstream-cached-rpms"
@@ -54,18 +53,14 @@ var (
 	packagesToInstall    = app.Flag("install-package", "Filepaths to RPM packages that should be installed before building.").Strings()
 	outArch              = app.Flag("out-arch", "Architecture of resulting package").String()
 	useCcache            = app.Flag("use-ccache", "Automatically install and use ccache during package builds").Bool()
+	maxCPU               = app.Flag("max-cpu", "Max number of CPUs used for package building").Default("").String()
 
 	logFile  = exe.LogFileFlag(app)
 	logLevel = exe.LogLevelFlag(app)
 )
 
 var (
-	brPackageNameRegex        = regexp.MustCompile(`^[^\s]+`)
-	equalToRegex              = regexp.MustCompile(` '?='? `)
-	greaterThanOrEqualRegex   = regexp.MustCompile(` '?>='? [^ ]*`)
-	installedPackageNameRegex = regexp.MustCompile(`^(.+)(-[^-]+-[^-]+)`)
-	lessThanOrEqualToRegex    = regexp.MustCompile(` '?<='? `)
-	packageUnavailableRegex   = regexp.MustCompile(`^No package \\x1b\[1m\\x1b\[30m(.+) \\x1b\[0mavailable`)
+	packageUnavailableRegex = regexp.MustCompile(`^No package \\x1b\[1m\\x1b\[30m(.+) \\x1b\[0mavailable`)
 )
 
 func main() {
@@ -82,16 +77,17 @@ func main() {
 	srpmsDirAbsPath, err := filepath.Abs(*srpmsDirPath)
 	logger.PanicOnError(err, "Unable to find absolute path for SRPMs directory '%s'", *srpmsDirPath)
 
-	srpmName := strings.TrimSuffix(filepath.Base(*srpmFile), ".src.rpm")
-	chrootDir := filepath.Join(*workDir, srpmName)
+	chrootDir := buildChrootDirPath(*workDir, *srpmFile, *runCheck)
 
-	defines := rpm.DefaultDefines(*runCheck)
-	defines[rpm.DistTagDefine] = *distTag
+	defines := rpm.DefaultDefinesWithDist(*runCheck, *distTag)
 	defines[rpm.DistroReleaseVersionDefine] = *distroReleaseVersion
 	defines[rpm.DistroBuildNumberDefine] = *distroBuildNumber
 	defines[rpm.MarinerModuleLdflagsDefine] = "-Wl,-dT,%{_topdir}/BUILD/module_info.ld"
 	if *useCcache {
 		defines[rpm.MarinerCCacheDefine] = "true"
+	}
+	if *maxCPU != "" {
+		defines[rpm.MaxCPUDefine] = *maxCPU
 	}
 
 	builtRPMs, err := buildSRPMInChroot(chrootDir, rpmsDirAbsPath, toolchainDirAbsPath, *workerTar, *srpmFile, *repoFile, *rpmmacrosFile, *outArch, defines, *noCleanup, *runCheck, *packagesToInstall, *useCcache)
@@ -102,12 +98,12 @@ func main() {
 
 	// On success write a comma-seperated list of RPMs built to stdout that can be parsed by the invoker.
 	// Any output from logger will be on stderr so stdout will only contain this output.
-	fmt.Printf(strings.Join(builtRPMs, ","))
+	if !*runCheck {
+		fmt.Print(strings.Join(builtRPMs, ","))
+	}
 }
 
 func copySRPMToOutput(srpmFilePath, srpmOutputDirPath string) (err error) {
-	const srpmsDirName = "SRPMS"
-
 	srpmFileName := filepath.Base(srpmFilePath)
 	srpmOutputFilePath := filepath.Join(srpmOutputDirPath, srpmFileName)
 
@@ -116,17 +112,24 @@ func copySRPMToOutput(srpmFilePath, srpmOutputDirPath string) (err error) {
 	return
 }
 
+func buildChrootDirPath(workDir, srpmFilePath string, runCheck bool) (chrootDirPath string) {
+	buildDirName := strings.TrimSuffix(filepath.Base(*srpmFile), ".src.rpm")
+	if runCheck {
+		buildDirName += "_TEST_BUILD"
+	}
+
+	return filepath.Join(workDir, buildDirName)
+}
+
 func buildSRPMInChroot(chrootDir, rpmDirPath, toolchainDirPath, workerTar, srpmFile, repoFile, rpmmacrosFile, outArch string, defines map[string]string, noCleanup, runCheck bool, packagesToInstall []string, useCcache bool) (builtRPMs []string, err error) {
 	const (
 		buildHeartbeatTimeout = 30 * time.Minute
 
 		existingChrootDir = false
-		squashErrors      = false
 
 		overlaySource           = ""
 		overlayWorkDirRpms      = "/overlaywork_rpms"
 		overlayWorkDirToolchain = "/overlaywork_toolchain"
-		rpmDirName              = "RPMS"
 	)
 
 	srpmBaseName := filepath.Base(srpmFile)
@@ -181,8 +184,9 @@ func buildSRPMInChroot(chrootDir, rpmDirPath, toolchainDirPath, workerTar, srpmF
 		return
 	}
 
-	rpmBuildOutputDir := filepath.Join(chroot.RootDir(), chrootRpmBuildRoot, rpmDirName)
-	builtRPMs, err = moveBuiltRPMs(rpmBuildOutputDir, rpmDirPath)
+	if !runCheck {
+		builtRPMs, err = moveBuiltRPMs(chroot.RootDir(), rpmDirPath)
+	}
 
 	return
 }
@@ -226,16 +230,21 @@ func buildRPMFromSRPMInChroot(srpmFile, outArch string, runCheck bool, defines m
 
 	// Build the SRPM
 	if runCheck {
-		err = rpm.BuildRPMFromSRPM(srpmFile, outArch, defines)
+		err = rpm.TestRPMFromSRPM(srpmFile, outArch, defines)
 	} else {
-		err = rpm.BuildRPMFromSRPM(srpmFile, outArch, defines, "--nocheck")
+		err = rpm.BuildRPMFromSRPM(srpmFile, outArch, defines)
 	}
 
 	return
 }
 
-func moveBuiltRPMs(rpmOutDir, dstDir string) (builtRPMs []string, err error) {
-	const rpmExtension = ".rpm"
+func moveBuiltRPMs(chrootRootDir, dstDir string) (builtRPMs []string, err error) {
+	const (
+		chrootRpmBuildDir = "/usr/src/mariner/RPMS"
+		rpmExtension      = ".rpm"
+	)
+
+	rpmOutDir := filepath.Join(chrootRootDir, chrootRpmBuildDir)
 	err = filepath.Walk(rpmOutDir, func(path string, info os.FileInfo, fileErr error) (err error) {
 		if fileErr != nil {
 			return fileErr
@@ -359,7 +368,7 @@ func tdnfInstall(packages []string) (err error) {
 // the build environment has libtool archive files present, gnu configure could
 // detect it and create more libtool archive files which can cause build failures.
 func removeLibArchivesFromSystem() (err error) {
-	dirsToExclude := []string{"/proc", "/dev", "/sys", "/run"}
+	dirsToExclude := []string{"/proc", "/dev", "/sys", "/run", "/ccache-dir"}
 
 	err = filepath.Walk("/", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -368,6 +377,7 @@ func removeLibArchivesFromSystem() (err error) {
 
 		// Skip directories that are meant for device files and kernel virtual filesystems.
 		// These will not contain .la files and are mounted into the safechroot from the host.
+		// Also skip /ccache-dir, which is shared between chroots
 		if info.IsDir() && sliceutils.Contains(dirsToExclude, path, sliceutils.StringMatch) {
 			return filepath.SkipDir
 		}

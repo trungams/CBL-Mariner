@@ -21,6 +21,11 @@ MARINER_INPUT_SRPMS_DIR=${10}
 MARINER_OUTPUT_SRPMS_DIR=${11}
 MARINER_REHYDRATED_RPMS_DIR=${12}
 MARINER_TOOLCHAIN_MANIFESTS_FILE=${13}
+#  Time stamp components
+# =====================================================
+BLDTRACKER=${14}
+TIMESTAMP_FILE_PATH=${15}
+# =====================================================
 
 # Create toolchain subdirectory in out folder
 mkdir -pv $MARINER_BUILD_DIR/toolchain
@@ -39,7 +44,9 @@ mkdir -pv $MARINER_RPM_DIR/$(uname -m)
     "$MARINER_INPUT_SRPMS_DIR" \
     "$MARINER_OUTPUT_SRPMS_DIR" \
     "$MARINER_REHYDRATED_RPMS_DIR" \
-    "$MARINER_TOOLCHAIN_MANIFESTS_FILE"
+    "$MARINER_TOOLCHAIN_MANIFESTS_FILE" \
+    "$BLDTRACKER" \
+    "$TIMESTAMP_FILE_PATH"
 
 # Output:
 # out/toolchain/built_rpms
@@ -59,6 +66,14 @@ echo Creating toolchain source RPM archive
 pushd $MARINER_BUILD_DIR/toolchain
 tar -C ./populated_toolchain/usr/src/mariner -cvf toolchain_built_srpms_all.tar.gz SRPMS
 popd
+
+if [ "$INCREMENTAL_TOOLCHAIN" = "y" ]; then
+    echo "Creating delta toolchain RPMs tarball."
+
+    tar -C "$MARINER_BUILD_DIR"/toolchain/built_rpms_all \
+        -T "$MARINER_BUILD_DIR"/logs/toolchain/built_rpms_list.txt \
+        -cvf "$MARINER_BUILD_DIR"/toolchain/toolchain_built_rpms_delta.tar.gz
+fi
 
 echo Printing list of built toolchain RPMS:
 ls -la $MARINER_BUILD_DIR/toolchain/built_rpms_all

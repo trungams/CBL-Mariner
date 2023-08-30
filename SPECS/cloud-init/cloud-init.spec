@@ -1,6 +1,6 @@
 Summary:        Cloud instance init scripts
 Name:           cloud-init
-Version:        22.4
+Version:        23.2
 Release:        2%{?dist}
 License:        GPLv3
 Vendor:         Microsoft Corporation
@@ -9,6 +9,7 @@ Group:          System Environment/Base
 URL:            https://launchpad.net/cloud-init
 Source0:        https://launchpad.net/cloud-init/trunk/%{version}/+download/%{name}-%{version}.tar.gz
 Source1:        10-azure-kvp.cfg
+Patch0:         testGetInterfacesUnitTest.patch
 %define cl_services cloud-config.service cloud-config.target cloud-final.service cloud-init.service cloud-init.target cloud-init-local.service
 BuildRequires:  automake
 BuildRequires:  dbus
@@ -131,21 +132,29 @@ make check %{?_smp_mflags}
 %dir %{_sysconfdir}/cloud/templates
 %doc %{_sysconfdir}/cloud/cloud.cfg.d/README
 %doc %{_sysconfdir}/cloud/clean.d/README
-%{_sysconfdir}/dhcp/dhclient-exit-hooks.d/hook-dhclient
-%{_sysconfdir}/NetworkManager/dispatcher.d/hook-network-manager
 %config(noreplace) %{_sysconfdir}/cloud/templates/*
 %config(noreplace) %{_sysconfdir}/cloud/cloud.cfg
 %config(noreplace) %{_sysconfdir}/cloud/cloud.cfg.d/05_logging.cfg
 %config(noreplace) %{_sysconfdir}/systemd/system/sshd-keygen@.service.d/disable-sshd-keygen-if-cloud-init-active.conf
 %{_unitdir}/*
 %{_systemdgeneratordir}/cloud-init-generator
-/lib/udev/rules.d/66-azure-ephemeral.rules
+/usr/lib/udev/rules.d/66-azure-ephemeral.rules
 %{_datadir}/bash-completion/completions/cloud-init
 
 %files azure-kvp
 %config(noreplace) %{_sysconfdir}/cloud/cloud.cfg.d/10-azure-kvp.cfg
 
 %changelog
+* Fri Aug 11 2023 Minghe Ren <mingheren@microsoft.com> - 23.2-2
+- Add patch for unit test failure
+
+* Wed Jul 05 2023 Minghe Ren <mingheren@microsoft.com> - 23.2-1
+- Upgrade cloud-init to 23.2
+- Remove CVE-2023-1786.patch as it is no longer needed
+
+* Thu Jun 29 2023 Minghe Ren <mingheren@microsoft.com> - 22.4-3
+- Add patch for CVE-2023-1786
+
 * Mon Apr 03 2023 Minghe Ren <mingheren@microsoft.com> - 22.4-2
 - Install python serial module in check section to avoid test failure
 
@@ -159,7 +168,7 @@ make check %{?_smp_mflags}
 * Thu Sep 15 2022 Minghe Ren <mingheren@microsoft.com> - 22.2-8
 - Revert the change for adding sysinit.target dependency on previous two releases
 
-* Wed Aug 22 2022 Nan Liu <liunan@microsoft.com> - 22.2-7
+* Mon Aug 22 2022 Nan Liu <liunan@microsoft.com> - 22.2-7
 - Update add-mariner-distro-support patch to fix cloud-init dependency cycle
 
 * Wed Aug 03 2022 Minghe Ren <mingheren@microsoft.com> - 22.2-6

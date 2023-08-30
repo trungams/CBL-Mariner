@@ -6,7 +6,7 @@ Name:           nodejs18
 # WARNINGS: MUST check and update the 'npm_version' macro for every version update of this package.
 #           The version of NPM can be found inside the sources under 'deps/npm/package.json'.
 Version:        18.16.0
-Release:        1%{?dist}
+Release:        3%{?dist}
 License:        BSD and MIT and Public Domain and NAIST-2003 and Artistic-2.0
 Group:          Applications/System
 Vendor:         Microsoft Corporation
@@ -17,6 +17,7 @@ URL:            https://github.com/nodejs/node
 # !!!  => use clean-source-tarball.sh script to create a clean and reproducible source tarball.
 Source0:        https://nodejs.org/download/release/v%{version}/node-v%{version}.tar.xz
 Patch0:         disable-tlsv1-tlsv1-1.patch
+Patch1:         CVE-2022-25883-v18.patch
 
 BuildRequires:  brotli-devel
 BuildRequires:  coreutils >= 8.22
@@ -27,6 +28,7 @@ BuildRequires:  openssl-devel >= 1.1.1
 BuildRequires:  python3
 BuildRequires:  which
 BuildRequires:  zlib-devel
+BuildRequires:  c-ares-devel
 
 Requires:       brotli
 Requires:       coreutils >= 8.22
@@ -78,7 +80,8 @@ python3 configure.py \
   --with-intl=small-icu \
   --with-icu-source=deps/icu-small \
   --without-dtrace \
-  --openssl-use-def-ca-store
+  --openssl-use-def-ca-store \
+  --shared-cares
 
 JOBS=4 make %{?_smp_mflags} V=0
 
@@ -114,6 +117,12 @@ make cctest
 %{_datadir}/systemtap/tapset/node.stp
 
 %changelog
+* Tue Jul 11 2023 Muhammad Falak <mwani@microsoft.com> - 18.16.0-3
+- Patch CVE-2022-25883
+
+* Tue May 30 2023 Dallas Delaney <dadelan@microsoft.com> - 18.16.0-2
+- Fix CVE-2023-32067, CVE-2023-31130, CVE-2023-31147 by using system c-ares
+
 * Wed Apr 12 2023 Riken Maharjan <rmaharjan@microsoft.com> - 18.16.0-1
 - Upgrade to 18.16.0
 

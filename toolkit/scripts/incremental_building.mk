@@ -59,8 +59,12 @@ DELTA_BUILD    = y
 
 # Don't care if USE_CCACHE or REBUILD_TOOLS are set or not, doesn't matter to the quickbuild. Just turn them
 # on to be friendly to the user unless they have explicitly set it to off.
-USE_CCACHE    ?= y
-REBUILD_TOOLS ?= y
+USE_CCACHE             ?= y
+REBUILD_TOOLS          ?= y
+DELTA_FETCH            ?= y
+PRECACHE               ?= y
+# We also want to try and limit pointless rebuilds, so set EXTRA_BUILD_LAYERS to 1 if it's not already set.
+MAX_CASCADING_REBUILDS ?= 1
 endif
 
 ######## SET REMAINING FLAG DEFAULTS ########
@@ -71,6 +75,10 @@ REBUILD_TOOLS                   ?= n
 USE_CCACHE                      ?= n
 DELTA_BUILD                     ?= n
 CLEAN_TOOLCHAIN_CONTAINERS      ?= y
+MAX_CPU                         ?=
+DELTA_FETCH                     ?= n
+PRECACHE                        ?= n
+MAX_CASCADING_REBUILDS          ?=
 
 ######## HANDLE INCREMENTAL_TOOLCHAIN DEPRECATION ########
 

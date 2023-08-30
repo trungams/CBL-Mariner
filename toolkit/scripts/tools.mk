@@ -13,6 +13,21 @@ $(call create_folder,$(BUILD_DIR)/tools)
 
 ######## GO TOOLS ########
 
+# The version as held in the go.mod file (a line like 'go 1.19'). Add "go" to the front of the version number
+# so that it matches the output of 'go version' (e.g. 'go1.19').
+go_min_version = go$(shell grep -E '^go [0-9]+\.[0-9]+' $(TOOLS_DIR)/go.mod | awk '{print $$2}')
+
+# Check if the go version is high enough to build the tools. The 'sort' command is used to compare the versions
+# (with -V which sorts by version number). If the lowest version in the sort is the same as the minimum version, then
+# the installed version must be greater than or equal to the minimum version and we are fine.
+ifeq ($(REBUILD_TOOLS),y)
+go_current_version = $(shell go version | awk '{print $$3}')
+go_version_check = $(shell printf '%s\n%s\n' "$(go_min_version)" "$(go_current_version)" | sort -V | head -n1)
+ifneq ($(go_version_check),$(go_min_version))
+$(error Go version '$(go_current_version)' is less than minimum required version '$(go_min_version)')
+endif
+endif
+
 # List of go utilities in tools/ directory
 go_tool_list = \
 	boilerplate \
@@ -27,9 +42,11 @@ go_tool_list = \
 	isomaker \
 	liveinstaller \
 	pkgworker \
+	precacher \
 	roast \
 	rpmssnapshot \
 	scheduler \
+	specarchchecker \
 	specreader \
 	srpmpacker \
 	validatechroot \
@@ -39,8 +56,10 @@ go_tool_targets = $(foreach target,$(go_tool_list),$(TOOL_BINS_DIR)/$(target))
 # Common files to monitor for all go targets
 go_module_files = $(TOOLS_DIR)/go.mod $(TOOLS_DIR)/go.sum
 go_internal_files = $(shell find $(TOOLS_DIR)/internal/ -type f -name '*.go')
+go_pkg_files = $(shell find $(TOOLS_DIR)/pkg/ -type f -name '*.go')
 go_imagegen_files = $(shell find $(TOOLS_DIR)/imagegen/ -type f -name '*.go')
-go_common_files = $(go_module_files) $(go_internal_files) $(go_imagegen_files) $(BUILD_DIR)/tools/internal.test_coverage
+go_scheduler_files = $(shell find $(TOOLS_DIR)/scheduler -type f -name '*.go')
+go_common_files = $(go_module_files) $(go_internal_files) $(go_imagegen_files) $(go_pkg_files) $(go_scheduler_files) $(STATUS_FLAGS_DIR)/got_go_deps.flag $(BUILD_DIR)/tools/internal.test_coverage
 # A report on test coverage for all the go tools
 test_coverage_report=$(TOOL_BINS_DIR)/test_coverage_report.html
 
@@ -98,7 +117,7 @@ $(BUILD_DIR)/tools/internal.test_coverage: $(go_internal_files) $(go_imagegen_fi
 # We can check if $SUDO_USER is set (the user who invoked sudo), and if so, use that user to run go get via sudo -u.
 # We allow the command to fail with || echo ..., since we don't want to fail the build if the user has already
 # downloaded the dependencies as root. The go build command will download the dependencies if they are missing (but as root).
-$(STATUS_FLAGS_DIR)/got_go_deps.flag: $(go_common_files)
+$(STATUS_FLAGS_DIR)/got_go_deps.flag:
 	@cd $(TOOLS_DIR)/ && \
 		if [ -z "$$SUDO_USER" ]; then \
 			echo "SUDO_USER is not set, running 'go get' as user '$$USER'"; \
@@ -122,7 +141,7 @@ go-fmt-all:
 
 # Formats the test coverage for the tools
 .PHONY: $(BUILD_DIR)/tools/all_tools.coverage
-$(BUILD_DIR)/tools/all_tools.coverage: $(call shell_real_build_only, find $(TOOLS_DIR)/ -type f -name '*.go')
+$(BUILD_DIR)/tools/all_tools.coverage: $(call shell_real_build_only, find $(TOOLS_DIR)/ -type f -name '*.go') $(STATUS_FLAGS_DIR)/got_go_deps.flag
 	cd $(TOOLS_DIR) && go test -coverpkg=./... -covermode=atomic -coverprofile=$@ ./...
 $(test_coverage_report): $(BUILD_DIR)/tools/all_tools.coverage
 	cd $(TOOLS_DIR) && go tool cover -html=$(BUILD_DIR)/tools/all_tools.coverage -o $@

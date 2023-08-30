@@ -13,11 +13,12 @@ sudo apt-get update
 # Install required dependencies.
 # Recommended but not required: `pigz` for faster compression operations.
 sudo apt -y install \
+    acl \
     curl \
     gawk \
     genisoimage \
     git \
-    golang-1.17-go \
+    golang-1.19-go \
     make \
     parted \
     pigz \
@@ -27,8 +28,8 @@ sudo apt -y install \
     wget \
     xfsprogs
 
-# Fix go 1.17 link
-sudo ln -vsf /usr/lib/go-1.17/bin/go /usr/bin/go
+# Fix go 1.19 link
+sudo ln -vsf /usr/lib/go-1.19/bin/go /usr/bin/go
 
 # Install and configure Docker.
 curl -fsSL https://get.docker.com -o get-docker.sh

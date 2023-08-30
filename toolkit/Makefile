@@ -21,11 +21,14 @@ PACKAGE_BUILD_LIST      ?=
 PACKAGE_REBUILD_LIST    ?=
 PACKAGE_IGNORE_LIST     ?=
 SRPM_PACK_LIST          ?=
+TEST_RUN_LIST           ?=
+TEST_RERUN_LIST         ?=
+TEST_IGNORE_LIST        ?=
 
 ######## SET INCREMENTAL BUILD FLAGS ########
 
 # Logic to auto configure build options for optimized builds
-# These will set the default values for: REBUILD_TOOLS, USE_CCACHE, REBUILD_TOOLCHAIN, DELTA_BUILD, INCREMENTAL_TOOLCHAIN, ALLOW_TOOLCHAIN_DOWNLOAD_FAIL, and CLEAN_TOOLCHAIN_CONTAINERS
+# These will set the default values for: REBUILD_TOOLS, USE_CCACHE, MAX_CPU, REBUILD_TOOLCHAIN, DELTA_BUILD, INCREMENTAL_TOOLCHAIN, ALLOW_TOOLCHAIN_DOWNLOAD_FAIL, and CLEAN_TOOLCHAIN_CONTAINERS
 include $(SCRIPTS_DIR)/incremental_building.mk
 
 ######## SET REMAINING FLAGS ########
@@ -37,6 +40,7 @@ ALLOW_SRPM_DOWNLOAD_FAIL        ?= n
 RUN_CHECK                       ?= n
 USE_PREVIEW_REPO                ?= n
 DISABLE_UPSTREAM_REPOS          ?= n
+DISABLE_DEFAULT_REPOS           ?= n
 TOOLCHAIN_CONTAINER_ARCHIVE     ?=
 TOOLCHAIN_ARCHIVE               ?=
 TOOLCHAIN_SOURCES_ARCHIVE       ?=
@@ -58,6 +62,12 @@ REBUILD_DEP_CHAINS              ?= y
 HYDRATED_BUILD                  ?= n
 TARGET_ARCH                     ?=
 ALLOW_TOOLCHAIN_REBUILDS        ?= n
+CACHED_PACKAGES_ARCHIVE         ?=
+
+# Tracing & Profiling support: https://go.dev/doc/diagnostics
+ENABLE_CPU_PROFILE              ?= n
+ENABLE_MEM_PROFILE              ?= n
+ENABLE_TRACE                    ?= n
 
 # Folder defines
 TOOLS_DIR        ?= $(toolkit_root)/tools
@@ -82,6 +92,8 @@ STATUS_FLAGS_DIR   ?= $(BUILD_DIR)/make_status
 CHROOT_DIR         ?= $(BUILD_DIR)/worker/chroot
 IMAGEGEN_DIR       ?= $(BUILD_DIR)/imagegen
 TOOLCHAIN_RPMS_DIR ?= $(BUILD_DIR)/toolchain_rpms
+TIMESTAMP_DIR      ?= $(BUILD_DIR)/timestamp
+PROFILE_DIR        ?= $(BUILD_DIR)/profile
 
 RPMRC_DIR        ?= $(MACRO_DIR)/usr/lib/rpm
 
@@ -144,6 +156,12 @@ all: toolchain go-tools chroot-tools
 # Variable prerequisite tracking
 include $(SCRIPTS_DIR)/utils.mk
 
+# Set up for the timestamp feature
+include $(SCRIPTS_DIR)/timestamp.mk
+
+# Profiling & Tracing feature
+include $(SCRIPTS_DIR)/profile.mk
+
 # Set the variables for build number, distro tag, etc
 include $(SCRIPTS_DIR)/build_tag.mk
 
@@ -163,9 +181,21 @@ include $(SCRIPTS_DIR)/tools.mk
 #   input-srpms, clean-input-srpms
 include $(SCRIPTS_DIR)/srpm_pack.mk
 
+# Create local build env for building RPMs with:
+#   containerized-rpmbuild containerized-rpmbuild-help
+include $(SCRIPTS_DIR)/containerized-build.mk
+
 # Expand local SRPMS into sources and SPECS with:
 #   expand-specs clean-expand-specs
 include $(SCRIPTS_DIR)/srpm_expand.mk
+
+# Create self contained toolkit archive contianing all the required tools with:
+#   package-toolkit, clean-package-toolkit
+include $(SCRIPTS_DIR)/toolkit.mk
+
+# Fill the cache with rpms from the package server without using package manager or chroot with:
+#   pre-cache
+include $(SCRIPTS_DIR)/precache.mk
 
 # Create a package build workplan with:
 #   workplan, clean-workplan clean-cache
@@ -178,10 +208,6 @@ include $(SCRIPTS_DIR)/pkggen.mk
 # Create images with:
 #   image, iso, clean-imggen
 include $(SCRIPTS_DIR)/imggen.mk
-
-# Create self contained toolkit archive contianing all the required tools with:
-#   package-toolkit, clean-package-toolkit
-include $(SCRIPTS_DIR)/toolkit.mk
 
 # Each component provides specific clean implementations which clean depends on.
 # They are guaranteed to run first and will verify there are no existing mount points

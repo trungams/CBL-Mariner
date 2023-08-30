@@ -1,0 +1,94 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+# TODO
+name: Cherry pick commits from PR
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - 'fasttrack/*'
+    paths:
+      - 'SPECS/**'
+      - 'SPECS-EXTENDED/**'
+      - 'SPECS-SIGNED/**'
+
+permissions:
+  contents: read
+  pull-requests: read
+defaults:
+  run:
+    shell: bash
+
+env:
+  CHERRY_PICK_BRANCH_MAPPING: '{"fasttrack/1.0": "tvuong/test-1.0-dev", "fasttrack/2.0": "tvuong/test-main"}'
+
+jobs:
+  # Scans the PR for cherry pick comments, in addition to the default cherry pick target
+  collect_target_branches:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    name: Collect target branches from Pull Request
+    outputs:
+      cherry_pick_target_branches: ${{ steps.target_branches.outputs.cherry_pick_target_branches }}
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      # create an array of target branches
+      # add the default one to the list
+      # scan PR comments for cherry pick commands, parse and add them to list
+      # dedup list
+      # write output
+      - name: Create list of target branches
+        id: target_branches
+        run: |
+          cherry_pick_branches_json=$(gh pr view ${{ github.event.number }} \
+                                       --repo ${{ github.repository }} \
+                                       --json comments \
+                                       --jq '.comments
+                                              | map(select(.authorAssociation == "MEMBER" or .authorAssociation == "OWNER")
+                                                    | .body
+                                                    | select(startswith("/cherry-pick "))
+                                                    | ltrimstr("/cherry-pick ")
+                                                    | split(" "))
+                                              | flatten
+                                              | . += ["${{ fromJSON(env.CHERRY_PICK_BRANCH_MAPPING)[github.base_ref] }}"]
+                                              | unique')
+          branches_list=$(echo $cherry_pick_branches_json | jq -r @sh | tr -d "'")
+          IFS=" " read -ra target_branches <<< "$branches_list"
+          echo "cherry_pick_target_branches=${target_branches[*]}" >> $GITHUB_OUTPUT
+
+  # Actual cherry-pick work for each target branch
+  cherry_pick_commit:
+    needs: collect_target_branches
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    name: Cherry pick
+    steps:
+      - name: Workflow trigger checkout
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.base_ref }}
+          fetch-depth: 0
+
+      - name: Configure local git repo
+        run: |
+          git config --local user.email "cblmargh@microsoft.com"
+          git config --local user.name "CBL-Mariner Servicing Account"
+
+      # Run cherry-pick for each target branch and create new PR for it. If cherry-pick fails,
+      # output conflicts to the action logs and notify in the original PR.
+      - name: Run cherry-pick action
+        run: |
+          for target_branch in ${{ needs.collect_target_branches.outputs.cherry_pick_target_branches }}; do
+            toolkit/scripts/cherry_pick.sh \
+              -r "${{ github.repository }}" \
+              -p "${{ github.event.pull_request.number }}" \
+              -t "$target_branch" \
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

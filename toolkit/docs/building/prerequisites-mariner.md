@@ -9,6 +9,7 @@ This page lists host machine requirements for building with the CBL-Mariner tool
 # Install required dependencies.
 # Recommended but not required: `pigz` for faster compression operations.
 sudo tdnf -y install \
+    acl \
     binutils \
     cdrkit \
     curl \
@@ -17,7 +18,7 @@ sudo tdnf -y install \
     glibc-devel \
     genisoimage \
     git \
-    "golang < 1.18" \
+    golang \
     kernel-headers \
     make \
     moby-cli \
